@@ -1,0 +1,5 @@
+kserve==0.11.0rc0
+pymongo
+typing
+fastapi
+uvicorn
