@@ -76,7 +76,7 @@ class CustomModel(kserve.Model):
             if gender is not None:
                 query["gender"] = gender
             if category is not None:
-                query["$or"] = [{ "category": category, "category_name": category}]
+                query["$or"] = [{ "category": category},{ "category_name": category}]
 
         print("Final query: ", query)
 
