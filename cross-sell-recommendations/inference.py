@@ -1,4 +1,6 @@
+import logging
 import os
+import time
 from typing import Any, Dict
 
 import kserve
@@ -15,10 +17,24 @@ class CustomModel(kserve.Model):
         self.load()
 
     def load(self):
-        self.client = MongoClient(self.connection_uri)
-        self.database = self.client[self.database_name]
-        self.collection = self.database[self.collection_name]
-        self.ready = True
+        max_retries = 3
+        retry_delay = 5  # seconds
+        retries = 0
+        connected = False
+        while retries < max_retries and not connected:
+            try:
+                self.client = MongoClient(self.connection_uri)
+                self.database = self.client[self.database_name]
+                self.collection = self.database[self.collection_name]
+                connected = True
+            except Exception as e:
+                logging.error(f"Failed to connect to MongoDB: {e}. Retrying...")
+                retries += 1
+                if retries < max_retries:
+                    time.sleep(retry_delay)
+                else:
+                    raise e
+        self.ready = True if connected else False
 
     def predict(self, payload: Dict[str, Any], headers: Dict[str, str] = None) -> Dict[str, Any]:
         product_slug = payload.get("product_slug", [])
