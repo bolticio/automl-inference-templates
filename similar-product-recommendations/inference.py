@@ -1,51 +1,45 @@
-import kserve
-from typing import Dict
-from pymongo import MongoClient
+import logging
 import os
+import time
+from typing import Dict
 
-def query_mongodb():
-    # Connect to MongoDB
-    client = MongoClient(os.getenv("MONGO_CONNECTION_URI"))
-    return client
+import kserve
+from pymongo import MongoClient
+
 
 class CustomModel(kserve.Model):
     def __init__(self, name: str):
-       super().__init__(name)
-       self.name = name
-       self.load()
-       
+        super().__init__(name)
+        self.name = name
+        self.connection_uri = os.getenv("MONGO_CONNECTION_URI")
+        self.database_name = os.getenv("MONGO_DATABASE_NAME")
+        self.collection_name = os.getenv("MONGO_COLLECTION_NAME")
+        self.load()
 
     def load(self):
-        self.ready = True
+        max_retries = 3
+        retry_delay = 5  # seconds
+        retries = 0
+        connected = False
+        while retries < max_retries and not connected:
+            try:
+                self.client = MongoClient(self.connection_uri)
+                self.database = self.client[self.database_name]
+                self.collection = self.database[self.collection_name]
+                connected = True
+            except Exception as e:
+                logging.error(f"Failed to connect to MongoDB: {e}. Retrying...")
+                retries += 1
+                if retries < max_retries:
+                    time.sleep(retry_delay)
+                else:
+                    raise e
+        self.ready = True if connected else False
 
     def predict(self, payload: Dict, headers: Dict[str, str] = None) -> Dict:
-        print(payload)
-        client =query_mongodb()
-        # database_name = "fynd"
-        database_name = os.getenv("MONGO_DATABASE_NAME")
-        # Select the database
-        db = client[database_name]
 
-        # Select the collection
-        collection_name = os.getenv("MONGO_COLLECTION_NAME")
-
-        print("Collection name : ",collection_name)
-
-        print("Collection list : ",db.list_collection_names())
-
-        if collection_name in db.list_collection_names():
-            print(f"The collection '{collection_name}' exists.")
-        else:
-            print(f"The collection '{collection_name}' does not exist.")
-            return {
-                "error" : "collection not found"
-            }
-
-    
-        collection = db[collection_name]
-
-        product_id= payload['product_id'] if "product_id" in payload else None
-        product_slug= payload['product_slug'] if "product_slug" in payload else None
+        product_id = payload.get("product_id")
+        product_slug = payload.get("product_slug")
 
         query = {
             "$or": [
@@ -57,16 +51,16 @@ class CustomModel(kserve.Model):
                 }
             ]
         }
-        result = list(collection.find(query))
-        print(result)
-        if len(result)==0:
+        result = list(self.collection.find(query))
+        if len(result) == 0:
             return {
                 "predictions": []
             }
-        
+
         return {
             "predictions": result[0]["recommendations"]
         }
+
 
 if __name__ == "__main__":
     model = CustomModel(os.getenv("MODEL_NAME"))
